@@ -138,3 +138,5 @@ curl http://localhost:3000/api/auth/me \
 - Role-based access control (admin vs user)
 - Two-factor authentication (TOTP)
 - Docker + Docker Compose setup
+
+- You can collaborate and suggest improvements here
