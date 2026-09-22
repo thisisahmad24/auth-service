@@ -1,142 +1,134 @@
 # Auth Service
 
-A beginner-friendly Node.js + Express + MongoDB authentication REST API.
+A production-minded Node.js + Express + MongoDB authentication REST API with email verification, password reset, short-lived access tokens, rotating refresh tokens, account lockout, and role-based authorization.
 
 ## Features
 
-- ✅ User registration with input validation
-- ✅ Email verification (24-hour expiry)
-- ✅ Login with JWT
-- ✅ Account lockout after 5 failed attempts
-- ✅ Forgot / reset password via email
-- ✅ Protected routes via Bearer token
-- ✅ Rate limiting on all auth endpoints
-- ✅ Security headers via Helmet
+- User registration with strict input validation
+- Password hashing with bcrypt
+- Email verification with expiring, hashed one-time tokens
+- Login with short-lived JWT access tokens
+- Rotating refresh tokens stored as SHA-256 hashes
+- Logout that revokes the refresh session
+- Password reset with expiring, hashed one-time tokens
+- Password reset revokes existing refresh sessions
+- Account lockout after repeated failed logins
+- Protected Bearer-token routes
+- Role-based access control (`user` / `admin`)
+- Rate limiting for authentication and email flows
+- Helmet security headers and hardened Express settings
+- Production-safe error responses
+- Environment validation at startup
+- Graceful MongoDB/server shutdown
+- Docker and Docker Compose support
+- GitHub Actions CI
 
-## Tech stack
+## Stack
 
-| Layer | Choice |
+| Layer | Technology |
 |---|---|
-| Runtime | Node.js |
+| Runtime | Node.js 20 |
 | Framework | Express |
-| Database | MongoDB via Mongoose |
-| Auth | JWT (jsonwebtoken) |
-| Password | bcryptjs |
+| Database | MongoDB + Mongoose |
+| Authentication | JWT + rotating refresh tokens |
+| Password hashing | bcryptjs |
 | Email | Nodemailer |
 | Validation | express-validator |
-| Rate limiting | express-rate-limit |
-
-## Project structure
-
-```
-auth-service/
-├── src/
-│   ├── config/
-│   │   └── db.js              # MongoDB connection
-│   ├── controllers/
-│   │   └── authController.js  # All auth logic
-│   ├── middleware/
-│   │   ├── auth.js            # JWT protect middleware
-│   │   └── errorHandler.js    # Central error handler
-│   ├── models/
-│   │   └── User.js            # User schema
-│   ├── routes/
-│   │   └── auth.js            # Route definitions + validators
-│   ├── utils/
-│   │   ├── email.js           # Nodemailer helpers
-│   │   └── jwt.js             # Token helpers
-│   ├── app.js                 # Express app setup
-│   └── index.js               # Entry point
-├── tests/
-│   └── auth.test.js
-├── .env.example
-└── package.json
-```
+| Security | Helmet, CORS, rate limiting |
+| Tests | Jest + Supertest |
+| Containers | Docker Compose |
 
 ## Quick start
 
-### 1. Install dependencies
+### Install
+
 ```bash
 npm install
 ```
 
-### 2. Set up environment variables
+### Configure environment
+
 ```bash
 cp .env.example .env
-# Edit .env with your values
 ```
 
-### 3. Set up email (choose one)
+Generate a strong `JWT_SECRET` (at least 32 characters) and provide your MongoDB and SMTP credentials.
 
-**Option A — Mailtrap (recommended for development)**
-1. Sign up at https://mailtrap.io (free)
-2. Go to Email Testing → Inboxes → SMTP Settings
-3. Copy the credentials into `.env`
+### Start MongoDB
 
-**Option B — Gmail**
-```
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=your@gmail.com
-EMAIL_PASS=your_app_password  # Use App Password, not real password
-```
+With Docker:
 
-### 4. Start MongoDB
 ```bash
-# With Docker:
-docker run -d -p 27017:27017 --name mongo mongo:7
-
-# Or use MongoDB Atlas (cloud) — paste the connection string in MONGO_URI
+docker compose up -d mongo
 ```
 
-### 5. Run
+Or use MongoDB Atlas and put its connection string in `MONGO_URI`.
+
+### Run
+
 ```bash
-npm run dev   # development with auto-reload
-npm start     # production
-npm test      # run tests
+npm run dev
+# production
+npm start
+# tests
+npm test
 ```
 
-## API endpoints
+## Docker
 
-| Method | Endpoint | Auth | Description |
+Run the complete local stack:
+
+```bash
+docker compose up --build
+```
+
+The API will be available at `http://localhost:3000`. Before exposing the Compose setup publicly, replace the example JWT and SMTP values and use a proper secrets manager.
+
+## API
+
+| Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
 | POST | `/api/auth/register` | No | Create account |
 | GET | `/api/auth/verify-email/:token` | No | Verify email |
-| POST | `/api/auth/resend-verification` | No | Resend verify email |
-| POST | `/api/auth/login` | No | Login, returns JWT |
-| GET | `/api/auth/me` | Bearer | Get current user |
+| POST | `/api/auth/resend-verification` | No | Resend verification |
+| POST | `/api/auth/login` | No | Login and issue access/refresh tokens |
+| POST | `/api/auth/refresh` | No | Rotate refresh token |
+| POST | `/api/auth/logout` | Bearer | Revoke refresh session |
+| GET | `/api/auth/me` | Bearer | Current user |
+| GET | `/api/auth/admin` | Admin | Example RBAC-protected endpoint |
 | POST | `/api/auth/forgot-password` | No | Send reset email |
-| POST | `/api/auth/reset-password/:token` | No | Set new password |
-| GET | `/health` | No | Health check |
+| POST | `/api/auth/reset-password/:token` | No | Set a new password |
+| GET | `/health` | No | Service health |
 
-## Example requests
+## Authentication flow
 
-### Register
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Ali","email":"ali@example.com","password":"SecurePass1"}'
-```
+1. Register.
+2. Verify the email using the one-time link.
+3. Login to receive a short-lived access token and refresh token.
+4. Send the access token as `Authorization: Bearer <token>`.
+5. When the access token expires, call `/api/auth/refresh` with the refresh token.
+6. Store the newly returned refresh token and discard the old one.
+7. Call `/api/auth/logout` to revoke the refresh session.
+8. A password reset also revokes the refresh session.
 
-### Login
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"ali@example.com","password":"SecurePass1"}'
-```
+Refresh tokens are returned in JSON in this API. For a browser application, consider moving refresh tokens to secure, `HttpOnly`, `SameSite` cookies and adding the corresponding CSRF protections.
 
-### Access protected route
-```bash
-curl http://localhost:3000/api/auth/me \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
+## CI
 
-## What's next (Phase 2)
+Every push to `main` and every pull request targeting `main` runs the Jest test suite through GitHub Actions with MongoDB available as a service.
 
-- Refresh tokens (long-lived, rotating)
-- Google / GitHub OAuth login
-- Role-based access control (admin vs user)
-- Two-factor authentication (TOTP)
-- Docker + Docker Compose setup
+## Security notes
 
-- You can collaborate and suggest improvements here
+- Verification, reset, and refresh tokens are stored as hashes rather than plaintext.
+- Access tokens expire quickly by default.
+- Refresh tokens rotate on every refresh.
+- Password reset revokes the current refresh session.
+- Login attempts are throttled and temporarily locked after repeated failures.
+- Production errors do not expose internal exception messages.
+- CORS accepts only configured origins.
+- `x-powered-by` is disabled.
+- Never put credentials, API keys, SMTP passwords, or JWT secrets in source control.
+
+## Future enhancements
+
+Possible next steps are OAuth/OIDC, TOTP-based MFA, Redis-backed distributed rate limiting, refresh-token families for multi-device sessions, audit logging, OpenAPI/Swagger documentation, and deployment-specific secret management.
