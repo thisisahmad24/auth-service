@@ -22,7 +22,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters'],
-      select: false, // never returned in queries by default
+      select: false,
+    },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
     },
     isVerified: {
       type: Boolean,
@@ -32,6 +37,8 @@ const userSchema = new mongoose.Schema(
     emailVerifyExpires: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
+    refreshTokenHash: String,
+    refreshTokenExpires: Date,
     loginAttempts: {
       type: Number,
       default: 0,
@@ -41,33 +48,27 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
-// Compare entered password with hashed password
 userSchema.methods.comparePassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return bcrypt.compare(enteredPassword, this.password);
 };
 
-// Check if account is locked
 userSchema.methods.isLocked = function () {
-  return this.lockUntil && this.lockUntil > Date.now();
+  return Boolean(this.lockUntil && this.lockUntil > Date.now());
 };
 
-// Increment failed login attempts (lock after 5)
 userSchema.methods.incrementLoginAttempts = async function () {
-  // Reset if lock has expired
   if (this.lockUntil && this.lockUntil < Date.now()) {
     this.loginAttempts = 1;
     this.lockUntil = undefined;
   } else {
     this.loginAttempts += 1;
     if (this.loginAttempts >= 5) {
-      // Lock for 30 minutes
       this.lockUntil = Date.now() + 30 * 60 * 1000;
     }
   }
