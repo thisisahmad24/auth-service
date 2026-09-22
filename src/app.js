@@ -6,21 +6,34 @@ const authRoutes = require('./routes/auth');
 
 const app = express();
 
-// ─── Security & parsing middleware ────────────────────────────────────────────
-app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
-app.use(express.json({ limit: '10kb' })); // Prevent large payload attacks
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+app.use(helmet());
+
+const allowedOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins.length ? allowedOrigins : false,
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: false, limit: '10kb' }));
+
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: 'ok',
+    service: 'auth-service',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 
-// ─── Error handling ───────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
 
