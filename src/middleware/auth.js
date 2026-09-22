@@ -3,40 +3,49 @@ const User = require('../models/User');
 
 const protect = async (req, res, next) => {
   try {
-    // 1. Get token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Not authorised. No token provided.' });
+      return res.status(401).json({ success: false, message: 'Not authorised. No token provided.' });
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Not authorised. No token provided.' });
+    }
 
-    // 2. Verify token
     const decoded = verifyToken(token);
+    const user = await User.findById(decoded.sub);
 
-    // 3. Check user still exists
-    const user = await User.findById(decoded.id);
     if (!user) {
-      return res.status(401).json({ message: 'User belonging to this token no longer exists.' });
+      return res.status(401).json({ success: false, message: 'User belonging to this token no longer exists.' });
     }
 
-    // 4. Check email is verified
     if (!user.isVerified) {
-      return res.status(403).json({ message: 'Please verify your email before accessing this resource.' });
+      return res.status(403).json({ success: false, message: 'Please verify your email before accessing this resource.' });
     }
 
-    // 5. Attach user to request
+    if (user.isLocked()) {
+      return res.status(423).json({ success: false, message: 'Account is temporarily locked.' });
+    }
+
     req.user = user;
     next();
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ message: 'Invalid token.' });
+    if (error.name === 'JsonWebTokenError' || error.name === 'NotBeforeError') {
+      return res.status(401).json({ success: false, message: 'Invalid token.' });
     }
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ message: 'Token expired. Please log in again.' });
+      return res.status(401).json({ success: false, message: 'Token expired. Please refresh your session.' });
     }
     next(error);
   }
 };
 
-module.exports = { protect };
+const requireRole = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'You do not have permission to access this resource.' });
+  }
+  next();
+};
+
+module.exports = { protect, requireRole };
