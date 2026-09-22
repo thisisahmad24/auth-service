@@ -1,0 +1,34 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  auth-service:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      TRUST_PROXY: "false"
+      MONGO_URI: mongodb://mongo:27017/auth-service
+      JWT_SECRET: replace-with-a-secret-at-least-32-characters
+      JWT_EXPIRES_IN: 15m
+      JWT_ISSUER: auth-service
+      JWT_AUDIENCE: auth-client
+      CLIENT_URL: http://localhost:3000
+      EMAIL_HOST: smtp.example.com
+      EMAIL_PORT: 587
+      EMAIL_USER: replace-me
+      EMAIL_PASS: replace-me
+      EMAIL_FROM: no-reply@example.com
+
+volumes:
+  mongo_data:
