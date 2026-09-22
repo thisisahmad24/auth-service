@@ -1,12 +1,12 @@
 {
   "name": "auth-service",
-  "version": "1.0.0",
-  "description": "Beginner User Authentication Service",
+  "version": "1.1.0",
+  "description": "Production-minded Node.js + Express + MongoDB authentication REST API",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest --forceExit"
+    "test": "jest --forceExit --runInBand"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
