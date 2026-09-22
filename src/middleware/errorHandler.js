@@ -1,27 +1,22 @@
-// Central error handler — catches everything thrown with next(err)
 const errorHandler = (err, req, res, next) => {
-  console.error(`[ERROR] ${err.message}`);
+  console.error('[ERROR]', err);
 
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
 
-  // Mongoose duplicate key
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    message = `An account with that ${field} already exists.`;
     statusCode = 409;
-  }
-
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    message = Object.values(err.errors).map((e) => e.message).join(', ');
+    message = 'A resource with the provided unique value already exists.';
+  } else if (err.name === 'ValidationError') {
     statusCode = 400;
+    message = Object.values(err.errors).map((e) => e.message).join(', ');
+  } else if (err.name === 'CastError') {
+    statusCode = 404;
+    message = 'Resource not found.';
   }
 
-  // Mongoose bad ObjectId
-  if (err.name === 'CastError') {
-    message = 'Resource not found.';
-    statusCode = 404;
+  if (statusCode >= 500 && process.env.NODE_ENV === 'production') {
+    message = 'Internal server error';
   }
 
   res.status(statusCode).json({
@@ -31,7 +26,6 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-// Catch 404 routes
 const notFound = (req, res, next) => {
   const error = new Error(`Route not found: ${req.originalUrl}`);
   error.statusCode = 404;
